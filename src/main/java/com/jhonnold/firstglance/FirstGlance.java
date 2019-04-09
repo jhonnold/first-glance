@@ -14,9 +14,9 @@ import org.eclipse.jgit.treewalk.TreeWalk;
 import org.eclipse.jgit.util.io.NullOutputStream;
 import org.jgrapht.Graph;
 import org.jgrapht.GraphPath;
+import org.jgrapht.alg.shortestpath.FloydWarshallShortestPaths;
 import org.jgrapht.graph.DefaultUndirectedWeightedGraph;
 import org.jgrapht.graph.DefaultWeightedEdge;
-import org.jgrapht.alg.shortestpath.DijkstraShortestPath;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -68,13 +68,14 @@ public class FirstGlance {
 
         for (DefaultWeightedEdge edge : graph.edgeSet()) {
             graph.setEdgeWeight(edge, 1 / graph.getEdgeWeight(edge));
-//            System.out.printf("%s -- %1f\n", edge, graph.getEdgeWeight(edge));
         }
+
+        FloydWarshallShortestPaths<String, DefaultWeightedEdge> shortestPaths = new FloydWarshallShortestPaths<>(graph);
 
         for (String f: files) {
             for (String g : files) {
                 if (!f.equals(g)) {
-                    GraphPath<String, DefaultWeightedEdge> path = DijkstraShortestPath.findPathBetween(graph, f, g);
+                    GraphPath<String, DefaultWeightedEdge> path = shortestPaths.getPath(f, g);
 
                     for (String p : path.getVertexList()) {
                         if (!p.equals(f) && !p.equals(g)) fileWeights.put(p, fileWeights.get(p) + 1);
@@ -99,7 +100,7 @@ public class FirstGlance {
         treeWalk.addTree(head.getTree());
 
         while (treeWalk.next()) {
-            if (treeWalk.getPathString().indexOf("test") < 0) {
+            if (!treeWalk.getPathString().contains("test")) {
                 filesInRepository.add(treeWalk.getPathString());
             }
         }
