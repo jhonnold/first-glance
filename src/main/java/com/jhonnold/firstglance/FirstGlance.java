@@ -2,43 +2,33 @@
 
 package com.jhonnold.firstglance;
 
-import org.eclipse.jgit.diff.DiffEntry;
-import org.eclipse.jgit.diff.DiffFormatter;
-import org.eclipse.jgit.diff.RawTextComparator;
-import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.Repository;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
-import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
-import org.eclipse.jgit.treewalk.TreeWalk;
-import org.eclipse.jgit.util.io.NullOutputStream;
 import org.jgrapht.Graph;
 import org.jgrapht.GraphPath;
 import org.jgrapht.alg.shortestpath.FloydWarshallShortestPaths;
 import org.jgrapht.graph.DefaultUndirectedWeightedGraph;
 import org.jgrapht.graph.DefaultWeightedEdge;
 
-import java.io.File;
-import java.util.ArrayList;
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class FirstGlance {
     public static void main(String[] args) throws Exception {
-        FileRepositoryBuilder fileRepositoryBuilder = new FileRepositoryBuilder();
-        Repository repository = fileRepositoryBuilder
-                .setGitDir(new File(args[0]))
-                .readEnvironment()
-                .findGitDir()
-                .setMustExist(true)
-                .build();
+        RepositoryHelper repositoryHelper = new RepositoryHelper(args[0]);
 
-        RevWalk walk = new RevWalk(repository);
-        RevCommit headCommit = walk.parseCommit(repository.findRef(Constants.HEAD).getObjectId());
-        walk.markStart(headCommit);
+        try {
+            repositoryHelper.construct();
+        } catch (IOException e) {
+            System.err.printf("Failed to construct Repository Helper: %s\n", e.getMessage());
+        }
 
-        List<String> files = getFilesInRepository(repository, headCommit);
+        RevWalk walk = new RevWalk(repositoryHelper.getRepository());
+        walk.markStart(repositoryHelper.getHeadCommit());
+
+        List<String> files = repositoryHelper.getFilesInHead();
 
         Graph<String, DefaultWeightedEdge> graph = new DefaultUndirectedWeightedGraph<>(DefaultWeightedEdge.class);
         Map<String, Integer> fileWeights = new HashMap<>();
@@ -52,9 +42,8 @@ public class FirstGlance {
             }
         }
 
-
         for (RevCommit commit : walk) {
-            List<String> filesChanged = getChangedFilesInCommit(repository, commit);
+            List<String> filesChanged = repositoryHelper.getChangedFilesInCommit(commit);
 
             for (String f : filesChanged) {
                 for (String g : filesChanged) {
@@ -89,64 +78,5 @@ public class FirstGlance {
         for (String f : files) {
             System.out.printf("%s -- %d\n", f, fileWeights.get(f));
         }
-    }
-
-    private static List<String> getFilesInRepository(Repository repository, RevCommit head) throws Exception {
-        List<String> filesInRepository = new ArrayList<>();
-
-        TreeWalk treeWalk = new TreeWalk(repository);
-        treeWalk.reset();
-        treeWalk.setRecursive(true);
-        treeWalk.addTree(head.getTree());
-
-        while (treeWalk.next()) {
-            if (!treeWalk.getPathString().contains("test")) {
-                filesInRepository.add(treeWalk.getPathString());
-            }
-        }
-
-        return filesInRepository;
-    }
-
-    private static List<String> getChangedFilesInCommit(Repository repository, RevCommit commit) {
-        List<String> fileNamesInCommit = new ArrayList<>();
-        RevWalk walk = new RevWalk(repository);
-
-        try {
-            // This is essentially the initial commit, we just add everything in the tree
-            if (commit.getParentCount() == 0) {
-                TreeWalk tw = new TreeWalk(repository);
-                tw.reset();
-                tw.setRecursive(true);
-                tw.addTree(commit.getTree());
-
-                while (tw.next()) {
-                    fileNamesInCommit.add(tw.getPathString());
-                }
-
-                tw.close();
-            } else {
-                RevCommit parent = walk.parseCommit(commit.getParent(0).getId());
-
-                DiffFormatter df = new DiffFormatter(NullOutputStream.INSTANCE);
-                df.setRepository(repository);
-                df.setDiffComparator(RawTextComparator.DEFAULT);
-                df.setDetectRenames(true);
-
-                List<DiffEntry> diffs = df.scan(parent.getTree(), commit.getTree());
-                for (DiffEntry diff : diffs) {
-                    DiffEntry.ChangeType changeType = diff.getChangeType();
-                    if (changeType.equals(DiffEntry.ChangeType.DELETE)) {
-                        fileNamesInCommit.add(diff.getOldPath());
-                    } else {
-                        fileNamesInCommit.add(diff.getNewPath());
-                    }
-                }
-            }
-        } catch (Throwable t) {
-        } finally {
-            walk.dispose();
-        }
-        return fileNamesInCommit;
     }
 }
